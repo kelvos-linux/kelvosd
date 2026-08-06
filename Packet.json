@@ -1,0 +1,96 @@
+{
+  "timestamp": "2026-07-30T15:30:10.123456Z",
+  "interface": "eth0",
+  "direction": "ingress",
+  "packet_length": 1514,
+  "capture_length": 1514,
+
+  "ethernet": {
+    "destination_mac": "AA:BB:CC:DD:EE:FF",
+    "source_mac": "11:22:33:44:55:66",
+    "ethertype": "0x0800",
+    "vlan": {
+      "enabled": false,
+      "id": null,
+      "priority": null
+    }
+  },
+
+  "network": {
+    "protocol": "IPv4",
+    "version": 4,
+    "header_length": 20,
+    "total_length": 1500,
+    "identification": 12345,
+    "flags": {
+      "df": true,
+      "mf": false
+    },
+    "fragment_offset": 0,
+    "ttl": 64,
+    "protocol_number": 6,
+    "checksum": "0x9f4c",
+    "source_ip": "192.168.1.10",
+    "destination_ip": "142.250.190.78"
+  },
+
+  "transport": {
+    "protocol": "TCP",
+    "source_port": 51432,
+    "destination_port": 443,
+    "sequence_number": 325234523,
+    "acknowledgement_number": 94823423,
+    "header_length": 32,
+    "flags": {
+      "syn": false,
+      "ack": true,
+      "fin": false,
+      "rst": false,
+      "psh": true,
+      "urg": false,
+      "ece": false,
+      "cwr": false
+    },
+    "window_size": 64240,
+    "checksum": "0x2345",
+    "urgent_pointer": 0,
+    "options": [
+      {
+        "kind": "Timestamp",
+        "value": {
+          "tsval": 123456789,
+          "tsecr": 987654321
+        }
+      }
+    ]
+  },
+
+  "application": {
+    "protocol": "TLS",
+    "server_name": "www.google.com",
+    "alpn": "h2",
+    "http": null,
+    "dns": null
+  },
+
+  "payload": {
+    "length": 1428,
+    "encoding": "hex",
+    "data": "16030102ab0100..."
+  },
+
+  "flow": {
+    "flow_id": "b51f9c7d",
+    "stream_id": 1,
+    "session_id": "session-001"
+  },
+
+  "metadata": {
+    "capture_method": "AF_PACKET",
+    "kernel_timestamp": true,
+    "rss_queue": 2,
+    "cpu": 3,
+    "process": null,
+    "user": null
+  }
+}

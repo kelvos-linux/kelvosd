@@ -1,0 +1,11 @@
+# kelvos traffic monitor configuration
+# 
+[traffic_monitor]
+# Enable or disable the traffic monitor
+enabled = true
+
+# Ethernet interface name to attach XDP program to
+ethernet_interface = "enp1s0"
+
+# Path to the log file where JSON events will be appended
+traffic_log_file = "/var/log/kelvos_traffic_monitor.jsonl"

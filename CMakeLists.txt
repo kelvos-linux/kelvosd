@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(kelvos_tm C)
+project(kelvosd C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -10,7 +10,7 @@ pkg_check_modules(LIBBPF REQUIRED IMPORTED_TARGET libbpf)
 pkg_check_modules(JANSSON REQUIRED IMPORTED_TARGET jansson)
 
 # Loader executable
-add_executable(loader src/loader.c)
+add_executable(loader src/loader.c src/config.c)
 
 target_include_directories(loader PRIVATE
     ${LIBBPF_INCLUDE_DIRS}
@@ -40,7 +40,7 @@ add_dependencies(loader bpf_prog)
 
 # Optional: copy config to build dir for easier testing
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/config/kelvos_tm.conf
-    ${CMAKE_CURRENT_BINARY_DIR}/kelvos_tm.conf
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/kelvos_config.toml
+    ${CMAKE_CURRENT_BINARY_DIR}/kelvos_config.toml
     COPYONLY
 )

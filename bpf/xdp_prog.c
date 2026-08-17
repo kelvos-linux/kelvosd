@@ -1,6 +1,6 @@
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
-#include <bpf/bpf_endian.h>          // for bpf_htons, bpf_ntohs, bpf_ntohl
+#include <bpf/bpf_endian.h>      
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
@@ -54,8 +54,7 @@ int xdp_monitor(struct xdp_md *ctx) {
 
     __u16 eth_type = eth->h_proto;
     __u16 next_proto = eth_type;
-
-    /* Handle single VLAN tag */
+    
     if (next_proto == bpf_htons(ETH_P_8021Q)) {
         struct vlan_hdr *vlan = (struct vlan_hdr *)(eth + 1);
         if ((void *)(vlan + 1) > data_end)
@@ -65,8 +64,7 @@ int xdp_monitor(struct xdp_md *ctx) {
     } else {
         ev.eth_proto = next_proto;
     }
-
-    /* Parse IPv4 only */
+    
     if (next_proto == bpf_htons(ETH_P_IP)) {
         struct iphdr *ip = (struct iphdr *)(eth + 1);
         if ((void *)(ip + 1) > data_end)
@@ -111,8 +109,7 @@ int xdp_monitor(struct xdp_md *ctx) {
     } else {
         ev.ip_version = 0;
     }
-
-    /* Send event to userspace */
+    
     bpf_perf_event_output(ctx, &traffic_events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));
     return XDP_PASS;
 }

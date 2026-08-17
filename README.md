@@ -1,13 +1,13 @@
-# kelvos_tm
+# kelvosd
 
  A lightweight eBPF/XDP-based traffic manager and loader for Linux.
 
- This repository contains an XDP/eBPF program and a simple userspace loader to build, load, and test the packet processing program.
+ This repository contains an XDP/eBPF program and a userspace loader to build, load, and test the packet processing program.
 
  Contents
 - `bpf/xdp_prog.c` — XDP program source written in C.
 - `src/loader.c` — userspace loader that attaches the compiled BPF object to a network interface.
-- `config/kelvos_tm.conf` and `build/kelvos_tm.conf` — example configuration files.
+- `config/kelvos_config.toml` and `build/kelvos_config.toml` — example configuration files.
 - `build/` — CMake build artifacts and helper build scripts.
 
  Requirements
@@ -26,9 +26,16 @@
  make -j
  ```
 
- 2. Configure the loader
+2. Configure the loader
 
- Copy or edit `config/kelvos_tm.conf` to point to the desired interface and options.
+ Create or edit `config/kelvos_config.toml` with a `[traffic_monitor]` table. Example:
+
+```toml
+[traffic_monitor]
+enabled = true
+ethernet_interface = "enp1s0"
+log_file = "/var/log/kelvos_traffic_monitor.jsonl"
+```
 
  3. Load the BPF program
 

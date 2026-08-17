@@ -11,7 +11,8 @@
 #include <bpf/bpf.h>
 #include <jansson.h>
 
-// The event struct as defined in BPF
+#include "config.h"
+
 struct traffic_event {
     __u32 timestamp_ns;
     __u32 ifindex;
@@ -42,7 +43,6 @@ static void handle_signal(int sig) {
     exit_flag = 1;
 }
 
-// Convert flags bitmask to JSON object (for TCP flags)
 static json_t *tcp_flags_to_json(__u8 flags) {
     json_t *f = json_object();
     json_object_set_new(f, "syn", json_boolean(flags & 0x01));
@@ -54,7 +54,6 @@ static json_t *tcp_flags_to_json(__u8 flags) {
     return f;
 }
 
-// Handle a single event from perf buffer
 static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz) {
     (void)ctx; (void)cpu;
     if (data_sz < sizeof(struct traffic_event))
@@ -62,7 +61,7 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz) {
 
     struct traffic_event *ev = (struct traffic_event *)data;
 
-    // Build JSON root
+    
     json_t *root = json_object();
 
     // Timestamp (convert ns to ISO 8601)
@@ -87,7 +86,6 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz) {
 
     // Ethernet
     json_t *eth = json_object();
-    // We don't have MAC addresses from XDP (costly), so we set placeholders
     json_object_set_new(eth, "destination_mac", json_string("00:00:00:00:00:00"));
     json_object_set_new(eth, "source_mac", json_string("00:00:00:00:00:00"));
     char eth_type[8];
@@ -150,8 +148,7 @@ static void handle_event(void *ctx, int cpu, void *data, __u32 data_sz) {
         json_object_set_new(trans, "protocol", json_string("Other"));
     }
     json_object_set_new(root, "transport", trans);
-
-    // Application (placeholder – could be enhanced with deeper inspection)
+    
     json_t *app = json_object();
     json_object_set_new(app, "protocol", json_string("Unknown"));
     json_object_set_new(app, "server_name", json_null());
@@ -200,57 +197,36 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // Read config
-    FILE *fp = fopen(argv[1], "r");
-    if (!fp) {
-        perror("fopen config");
+    struct config cfg;
+    if (load_config(argv[1], &cfg) != 0) {
+        perror("load_config");
         return 1;
     }
 
-    char line[256];
-    char ifname[IF_NAMESIZE] = {0};
-    char log_path[512] = "/var/log/kelvos_traffic_monitor.log";
-    int enabled = 0;
-
-    while (fgets(line, sizeof(line), fp)) {
-        if (strncmp(line, "TRAFFICE_MONITOR_ENABLED=", 25) == 0) {
-            char *val = line + 25;
-            val[strcspn(val, "\r\n")] = '\0';
-            if (strcmp(val, "true") == 0) enabled = 1;
-        } else if (strncmp(line, "TRAFFICE_MONITOR_ETHERNET_INTERFACE=", 36) == 0) {
-            strncpy(ifname, line + 36, sizeof(ifname) - 1);
-            ifname[strcspn(ifname, "\r\n")] = '\0';
-        } else if (strncmp(line, "TRAFFICE_MONITOR_LOG_FILE=", 26) == 0) {
-            strncpy(log_path, line + 26, sizeof(log_path) - 1);
-            log_path[strcspn(log_path, "\r\n")] = '\0';
-        }
-    }
-    fclose(fp);
-
-    if (!enabled) {
+    if (!cfg.enabled) {
         printf("Traffic monitor is disabled.\n");
         return 0;
     }
-    if (ifname[0] == '\0') {
+
+    if (cfg.ethernet_interface[0] == '\0') {
         fprintf(stderr, "Interface not specified in config.\n");
         return 1;
     }
 
-    int ifindex = if_nametoindex(ifname);
+    int ifindex = if_nametoindex(cfg.ethernet_interface);
     if (ifindex == 0) {
         perror("if_nametoindex");
         return 1;
     }
-
-    // Open log file (append)
-    log_file = fopen(log_path, "a");
+    
+    log_file = fopen(cfg.log_file, "a");
     if (!log_file) {
         perror("fopen log");
         return 1;
     }
     setlinebuf(log_file); // line buffered
 
-    printf("Interface: %s (index %d), logging to %s\n", ifname, ifindex, log_path);
+    printf("Interface: %s (index %d), logging to %s\n", cfg.ethernet_interface, ifindex, cfg.log_file);
 
     // Load and attach XDP program
     obj = bpf_object__open_file("xdp_prog.o", NULL);
@@ -276,16 +252,14 @@ int main(int argc, char **argv) {
         xdp_link = NULL;
         goto cleanup;
     }
-
-    // Get the perf event map
+    
     struct bpf_map *map = bpf_object__find_map_by_name(obj, "traffic_events");
     if (!map) {
         fprintf(stderr, "Failed to find perf map 'traffic_events'\n");
         goto cleanup;
     }
     int map_fd = bpf_map__fd(map);
-
-    // Setup perf buffer
+    
     struct perf_buffer *pb = perf_buffer__new(map_fd, 8, handle_event, NULL, NULL, NULL);
     if (!pb) {
         fprintf(stderr, "Failed to create perf buffer\n");

@@ -2,19 +2,24 @@
 
  A lightweight eBPF/XDP-based traffic manager and loader for Linux.
 
- This repository contains an XDP/eBPF program and a userspace loader to build, load, and test the packet processing program.
+ This repository contains an XDP/eBPF program and a Go userspace loader to build, load, and test the packet processing program.
 
  Contents
 - `bpf/xdp_prog.c` — XDP program source written in C.
-- `src/loader.c` — userspace loader that attaches the compiled BPF object to a network interface.
+- `cmd/kelvosd/main.go` — Go userspace loader and Cobra CLI.
+- `internal/config` — TOML loading and validation.
+- `internal/events` — eBPF perf-event ABI decoding and JSON event shaping.
+- `internal/loader` — XDP attachment and perf-buffer lifecycle.
+- `internal/output` — buffered JSONL event output.
 - `config/kelvos_config.toml` and `build/kelvos_config.toml` — example configuration files.
 - `build/` — CMake build artifacts and helper build scripts.
 
  Requirements
 - Linux kernel with eBPF and XDP support (recent kernel recommended).
 - `clang` and `llc` (or `clang` with `-target bpf`) for compiling BPF programs.
-- `cmake` and `make` for building the userspace loader.
-- `libbpf` or the appropriate BPF userspace libraries installed (system package or bundled headers), and kernel headers.
+- `cmake` and `make` for compiling the eBPF object.
+- Go 1.23 or newer for the userspace CLI.
+ - Linux kernel headers and the Go dependencies declared in `go.mod`.
 
  Quick start
 
@@ -37,15 +42,33 @@ ethernet_interface = "enp1s0"
 log_file = "/var/log/kelvos_traffic_monitor.jsonl"
 ```
 
- 3. Load the BPF program
+ 3. Build and validate the Go CLI
+
+ From the repository root:
+
+ ```bash
+ go mod tidy
+ go build -o kelvosd ./cmd/kelvosd
+ ./kelvosd validate --config config/kelvos_config.toml
+ ```
+
+ 4. Load the BPF program
 
  Run the loader (example):
 
  ```bash
- sudo ./loader <interface> [options]
+ sudo ./kelvosd run --config config/kelvos_config.toml --object build/xdp_prog.o
  ```
 
- Replace `<interface>` with your network device (e.g. `eth0`). The loader will open and attach the BPF program built under `build/`.
+ The Cobra CLI also supports direct overrides:
+
+ ```bash
+ sudo ./kelvosd run --interface eth0 --object build/xdp_prog.o --log /tmp/traffic.jsonl
+ ./kelvosd --help
+ ./kelvosd run --help
+ ```
+
+ The `run` command opens the perf event map, attaches `xdp_monitor` to the selected interface, and appends JSONL events to the configured log file. Use Ctrl+C to detach cleanly.
 
  Development notes
 - BPF program sources are located under `bpf/`. Keep BPF C code minimal and avoid heavy C standard library usage.

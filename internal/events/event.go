@@ -7,18 +7,19 @@ import (
 	"time"
 )
 
-const wireSize = 44
+const wireSize = 81
 
 type TrafficEvent struct {
-	TimestampNS uint32
+	TimestampNS uint64
 	IfIndex     uint32
 	EthProto    uint16
 	IPVersion   uint8
 	IPTTL       uint8
 	IPTotalLen  uint16
-	IPSource    uint32
-	IPDest      uint32
+	SourceMAC   [6]byte
+	DestMAC     [6]byte
 	Transport   uint8
+	IPHeaderLen uint8
 	SourcePort  uint16
 	DestPort    uint16
 	TCPFlags    uint8
@@ -26,6 +27,8 @@ type TrafficEvent struct {
 	TCPAck      uint32
 	TCPWindow   uint16
 	PayloadLen  uint16
+	IPSource    [16]byte
+	IPDest      [16]byte
 }
 
 func Decode(data []byte) (TrafficEvent, error) {
@@ -33,46 +36,43 @@ func Decode(data []byte) (TrafficEvent, error) {
 		return TrafficEvent{}, fmt.Errorf("event is %d bytes, want at least %d", len(data), wireSize)
 	}
 	return TrafficEvent{
-		TimestampNS: binary.LittleEndian.Uint32(data[0:4]),
-		IfIndex:     binary.LittleEndian.Uint32(data[4:8]),
-		EthProto:    binary.BigEndian.Uint16(data[8:10]),
-		IPVersion:   data[10], IPTTL: data[11],
-		IPTotalLen: binary.BigEndian.Uint16(data[12:14]),
-		IPSource:   binary.LittleEndian.Uint32(data[16:20]),
-		IPDest:     binary.LittleEndian.Uint32(data[20:24]),
-		Transport:  data[24],
-		SourcePort: binary.BigEndian.Uint16(data[26:28]),
-		DestPort:   binary.BigEndian.Uint16(data[28:30]),
-		TCPFlags:   data[30],
-		TCPSeq:     binary.BigEndian.Uint32(data[32:36]),
-		TCPAck:     binary.BigEndian.Uint32(data[36:40]),
-		TCPWindow:  binary.BigEndian.Uint16(data[40:42]),
-		PayloadLen: binary.BigEndian.Uint16(data[42:44]),
+		TimestampNS: binary.LittleEndian.Uint64(data[0:8]),
+		IfIndex:     binary.LittleEndian.Uint32(data[8:12]),
+		EthProto:    binary.BigEndian.Uint16(data[12:14]),
+		IPVersion:   data[14], IPTTL: data[15],
+		IPTotalLen: binary.BigEndian.Uint16(data[16:18]),
+		SourceMAC:  [6]byte{data[18], data[19], data[20], data[21], data[22], data[23]},
+		DestMAC:    [6]byte{data[24], data[25], data[26], data[27], data[28], data[29]},
+		Transport:  data[30], IPHeaderLen: data[31],
+		SourcePort: binary.BigEndian.Uint16(data[32:34]),
+		DestPort:   binary.BigEndian.Uint16(data[34:36]),
+		TCPFlags:   data[36],
+		TCPSeq:     binary.BigEndian.Uint32(data[37:41]),
+		TCPAck:     binary.BigEndian.Uint32(data[41:45]),
+		TCPWindow:  binary.BigEndian.Uint16(data[45:47]),
+		PayloadLen: binary.BigEndian.Uint16(data[47:49]),
+		IPSource:   [16]byte{data[49], data[50], data[51], data[52], data[53], data[54], data[55], data[56], data[57], data[58], data[59], data[60], data[61], data[62], data[63], data[64]},
+		IPDest:     [16]byte{data[65], data[66], data[67], data[68], data[69], data[70], data[71], data[72], data[73], data[74], data[75], data[76], data[77], data[78], data[79], data[80]},
 	}, nil
 }
 
 func (e TrafficEvent) Record(interfaceName string) map[string]any {
-	protocol := "Other"
-	if e.Transport == 6 {
-		protocol = "TCP"
-	} else if e.Transport == 17 {
-		protocol = "UDP"
-	}
+	protocol := e.Protocol()
 	return map[string]any{
 		"timestamp": time.Unix(0, int64(e.TimestampNS)).UTC().Format("2006-01-02T15:04:05.000000000Z"),
 		"interface": interfaceName,
 		"direction": "ingress",
 		"ethernet": map[string]any{
-			"destination_mac": "00:00:00:00:00:00",
-			"source_mac":      "00:00:00:00:00:00",
+			"destination_mac": net.HardwareAddr(e.DestMAC[:]).String(),
+			"source_mac":      net.HardwareAddr(e.SourceMAC[:]).String(),
 			"ethertype":       fmt.Sprintf("0x%04x", e.EthProto),
 			"vlan":            map[string]any{"enabled": false, "id": nil, "priority": nil},
 		},
 		"network": map[string]any{
-			"protocol": map[bool]string{true: "IPv4", false: "Non-IP"}[e.IPVersion == 4],
-			"version":  e.IPVersion, "header_length": 20, "total_length": e.IPTotalLen,
+			"protocol": map[uint8]string{4: "IPv4", 6: "IPv6"}[e.IPVersion],
+			"version":  e.IPVersion, "header_length": e.IPHeaderLen, "total_length": e.IPTotalLen,
 			"ttl": e.IPTTL, "protocol_number": e.Transport,
-			"source_ip": ipv4(e.IPSource), "destination_ip": ipv4(e.IPDest),
+			"source_ip": ipString(e.IPVersion, e.IPSource), "destination_ip": ipString(e.IPVersion, e.IPDest),
 		},
 		"transport": map[string]any{
 			"protocol": protocol, "source_port": e.SourcePort, "destination_port": e.DestPort,
@@ -90,6 +90,22 @@ func (e TrafficEvent) Record(interfaceName string) map[string]any {
 	}
 }
 
-func ipv4(value uint32) string {
-	return net.IPv4(byte(value), byte(value>>8), byte(value>>16), byte(value>>24)).String()
+func (e TrafficEvent) Protocol() string {
+	if e.Transport == 6 {
+		return "TCP"
+	}
+	if e.Transport == 17 {
+		return "UDP"
+	}
+	return "Other"
+}
+
+func ipString(version uint8, value [16]byte) string {
+	if version == 4 {
+		return net.IPv4(value[0], value[1], value[2], value[3]).String()
+	}
+	if version == 6 {
+		return net.IP(value[:]).String()
+	}
+	return "0.0.0.0"
 }

@@ -68,6 +68,14 @@ log_file = "/var/log/kelvos_traffic_monitor.jsonl"
  ./kelvosd run --help
  ```
 
+ For a live terminal dashboard with total packets, traffic volume, packet/byte rates, and protocol breakdown:
+
+ ```bash
+ sudo ./kelvosd top --interface eth0 --object build/xdp_prog.o --log /tmp/traffic.jsonl
+ ```
+
+ The dashboard refreshes every second and keeps writing the same JSONL event stream. Press Ctrl+C to stop.
+
  The `run` command opens the perf event map, attaches `xdp_monitor` to the selected interface, and appends JSONL events to the configured log file. Use Ctrl+C to detach cleanly.
 
  Development notes

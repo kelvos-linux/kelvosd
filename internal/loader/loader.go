@@ -8,6 +8,7 @@ import (
 	"net"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -15,11 +16,14 @@ import (
 	"github.com/kelvosd/kelvosd/internal/config"
 	"github.com/kelvosd/kelvosd/internal/events"
 	"github.com/kelvosd/kelvosd/internal/output"
+	trafficTop "github.com/kelvosd/kelvosd/internal/top"
+	"golang.org/x/sys/unix"
 )
 
 type Runner struct {
 	Stdout io.Writer
 	Stderr io.Writer
+	Top    bool
 }
 
 func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) error {
@@ -40,6 +44,11 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 		return err
 	}
 	defer log.Close()
+	var dashboard *trafficTop.Dashboard
+	if r.Top {
+		dashboard = trafficTop.New(r.Stdout, ifaceName, cfg.LogPath())
+		dashboard.Render()
+	}
 
 	spec, err := ebpf.LoadCollectionSpec(objectPath)
 	if err != nil {
@@ -72,12 +81,36 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 		return fmt.Errorf("create perf reader: %w", err)
 	}
 	defer reader.Close()
+	var realtime, monotonic unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_REALTIME, &realtime); err != nil {
+		return fmt.Errorf("read realtime clock: %w", err)
+	}
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &monotonic); err != nil {
+		return fmt.Errorf("read monotonic clock: %w", err)
+	}
+	clockOffset := realtime.Nano() - monotonic.Nano()
 	go func() {
 		<-ctx.Done()
 		_ = reader.Close()
 	}()
+	if dashboard != nil {
+		go func() {
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					dashboard.Render()
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
 
-	fmt.Fprintf(r.Stdout, "Monitoring %s, logging to %s. Press Ctrl+C to stop.\n", ifaceName, cfg.LogPath())
+	if !r.Top {
+		fmt.Fprintf(r.Stdout, "Monitoring %s, logging to %s. Press Ctrl+C to stop.\n", ifaceName, cfg.LogPath())
+	}
 	for {
 		record, err := reader.Read()
 		if err != nil {
@@ -94,6 +127,10 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 		if err != nil {
 			fmt.Fprintf(r.Stderr, "warning: discard event: %v\n", err)
 			continue
+		}
+		event.TimestampNS += uint64(clockOffset)
+		if dashboard != nil {
+			dashboard.Add(event)
 		}
 		if err := log.Write(event.Record(ifaceName)); err != nil {
 			return err

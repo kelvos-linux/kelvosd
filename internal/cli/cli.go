@@ -28,14 +28,20 @@ func New(version string, stdout, stderr io.Writer) *cobra.Command {
 	root.SetErr(stderr)
 	root.Version = version
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
-	root.AddCommand(runCommand(&opts, stdout, stderr), validateCommand(&opts, stdout))
+	root.AddCommand(runCommand(&opts, stdout, stderr, false), runCommand(&opts, stdout, stderr, true), validateCommand(&opts, stdout))
 	return root
 }
 
-func runCommand(opts *Options, stdout, stderr io.Writer) *cobra.Command {
+func runCommand(opts *Options, stdout, stderr io.Writer, topMode bool) *cobra.Command {
+	use := "run"
+	short := "Attach the XDP program and write traffic events"
+	if topMode {
+		use = "top"
+		short = "Attach the XDP program and show live traffic statistics"
+	}
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Attach the XDP program and write traffic events",
+		Use:   use,
+		Short: short,
 		Example: "  sudo kelvosd run --config config/kelvos_config.toml --object build/xdp_prog.o\n" +
 			"  sudo kelvosd run --interface eth0 --log /tmp/traffic.jsonl",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -53,7 +59,7 @@ func runCommand(opts *Options, stdout, stderr io.Writer) *cobra.Command {
 				fmt.Fprintln(stdout, "Traffic monitor is disabled.")
 				return nil
 			}
-			return loader.Runner{Stdout: stdout, Stderr: stderr}.Run(cmd.Context(), cfg, opts.ObjectPath)
+			return loader.Runner{Stdout: stdout, Stderr: stderr, Top: topMode}.Run(cmd.Context(), cfg, opts.ObjectPath)
 		},
 	}
 	cmd.Flags().StringVarP(&opts.ConfigPath, "config", "c", "config/kelvos_config.toml", "path to TOML configuration")

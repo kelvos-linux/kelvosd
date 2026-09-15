@@ -9,3 +9,22 @@ ethernet_interface = "wlp1s0"
 
 # Path to the log file where JSON events will be appended
 traffic_log_file = "/var/log/kelvos_traffic_monitor.jsonl"
+
+[protocols]
+# IPv4/IPv6 protocol numbers (IANA assigned)
+tcp         = 6    # Transmission Control
+udp         = 17   # User Datagram
+
+# PORT DEFINITIONS
+
+[[ports]]
+service     = "http"
+numbers     = [80]
+protocols   = ["tcp"]
+description = "Hypertext Transfer Protocol"
+
+[[ports]]
+service     = "https"
+numbers     = [443]
+protocols   = ["tcp"]
+description = "HTTP over TLS"

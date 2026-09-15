@@ -11,7 +11,16 @@ import (
 const DefaultLogFile = "/var/log/kelvos_traffic_monitor.jsonl"
 
 type Config struct {
-	TrafficMonitor TrafficMonitor `toml:"traffic_monitor"`
+	TrafficMonitor TrafficMonitor   `toml:"traffic_monitor"`
+	Protocols      map[string]uint8 `toml:"protocols"`
+	Ports          []Port           `toml:"ports"`
+}
+
+type Port struct {
+	Service     string   `toml:"service"`
+	Numbers     []uint16 `toml:"numbers"`
+	Protocols   []string `toml:"protocols"`
+	Description string   `toml:"description"`
 }
 
 type TrafficMonitor struct {
@@ -40,6 +49,27 @@ func (c Config) Validate() error {
 	}
 	if c.TrafficMonitor.InterfaceName() == "" {
 		return errors.New("traffic_monitor.ethernet_interface is required")
+	}
+	for name, number := range c.Protocols {
+		if number == 0 {
+			return fmt.Errorf("protocols.%s must be greater than zero", name)
+		}
+	}
+	for index, port := range c.Ports {
+		if port.Service == "" {
+			return fmt.Errorf("ports[%d].service is required", index)
+		}
+		if len(port.Numbers) == 0 {
+			return fmt.Errorf("ports[%d].numbers must not be empty", index)
+		}
+		if len(port.Protocols) == 0 {
+			return fmt.Errorf("ports[%d].protocols must not be empty", index)
+		}
+		for _, protocol := range port.Protocols {
+			if _, ok := c.Protocols[protocol]; !ok {
+				return fmt.Errorf("ports[%d] references undefined protocol %q", index, protocol)
+			}
+		}
 	}
 	return nil
 }

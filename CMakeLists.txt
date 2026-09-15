@@ -5,6 +5,8 @@ project(kelvosd NONE)
 find_program(CLANG_BPF clang REQUIRED)
 
 set(BPF_SRC ${CMAKE_CURRENT_SOURCE_DIR}/bpf/xdp_prog.c)
+set(BPF_ENGINE ${CMAKE_CURRENT_SOURCE_DIR}/bpf/xdp_engine.c)
+set(BPF_ENGINE_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/bpf/xdp_engine.h)
 set(BPF_OBJ ${CMAKE_CURRENT_BINARY_DIR}/xdp_prog.o)
 
 add_custom_command(
@@ -17,7 +19,7 @@ add_custom_command(
             -I/usr/include/x86_64-linux-gnu
             -c ${BPF_SRC}
             -o ${BPF_OBJ}
-    DEPENDS ${BPF_SRC}
+    DEPENDS ${BPF_SRC} ${BPF_ENGINE} ${BPF_ENGINE_HEADER}
     COMMENT "Compiling BPF program xdp_prog.c -> xdp_prog.o"
 )
 

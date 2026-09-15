@@ -33,14 +33,29 @@
 
 2. Configure the loader
 
- Create or edit `config/kelvos_config.toml` with a `[traffic_monitor]` table. Example:
+ Create or edit `config/kelvos_config.toml` with a `[traffic_monitor]` table and
+ dynamic protocol/port policy. Example:
 
 ```toml
 [traffic_monitor]
 enabled = true
 ethernet_interface = "enp1s0"
 log_file = "/var/log/kelvos_traffic_monitor.jsonl"
+
+[protocols]
+tcp = 6
+udp = 17
+
+[[ports]]
+service = "http"
+numbers = [80, 8080]
+protocols = ["tcp"]
+description = "Web traffic"
 ```
+
+Only packets matching a configured protocol and source or destination port are
+sent from XDP to userspace. Add more `[[ports]]` entries without recompiling
+the BPF object.
 
  3. Build and validate the Go CLI
 

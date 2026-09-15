@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -24,6 +24,26 @@ type Runner struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Top    bool
+}
+
+func loadTrafficPolicy(collection *ebpf.Collection, cfg config.Config) error {
+	policy, ok := collection.Maps["traffic_policy"]
+	if !ok {
+		return errors.New("eBPF map traffic_policy not found")
+	}
+	for _, port := range cfg.Ports {
+		for _, protocolName := range port.Protocols {
+			protocol := cfg.Protocols[protocolName]
+			for _, number := range port.Numbers {
+				key := uint32(protocol)<<16 | uint32(number)
+				value := uint8(1)
+				if err := policy.Put(key, value); err != nil {
+					return fmt.Errorf("configure %s port %d: %w", protocolName, number, err)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) error {
@@ -45,9 +65,20 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 	}
 	defer log.Close()
 	var dashboard *trafficTop.Dashboard
+
 	if r.Top {
-		dashboard = trafficTop.New(r.Stdout, ifaceName, cfg.LogPath())
-		dashboard.Render()
+		dashboard = trafficTop.New(
+			r.Stdout,
+			ifaceName,
+			cfg.LogPath(),
+			cfg,
+		)
+
+		go func() {
+			if err := dashboard.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+			}
+		}()
 	}
 
 	spec, err := ebpf.LoadCollectionSpec(objectPath)
@@ -62,6 +93,9 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 		return fmt.Errorf("load eBPF programs: %w", err)
 	}
 	defer collection.Close()
+	if err := loadTrafficPolicy(collection, cfg); err != nil {
+		return err
+	}
 	program, ok := collection.Programs["xdp_monitor"]
 	if !ok {
 		return errors.New("eBPF program xdp_monitor not found")
@@ -93,17 +127,17 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 		<-ctx.Done()
 		_ = reader.Close()
 	}()
-	if dashboard != nil {
+	if r.Top {
+		dashboard = trafficTop.New(
+			r.Stdout,
+			ifaceName,
+			cfg.LogPath(),
+			cfg,
+		)
+
 		go func() {
-			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					dashboard.Render()
-				case <-ctx.Done():
-					return
-				}
+			if err := dashboard.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 			}
 		}()
 	}

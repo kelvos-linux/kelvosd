@@ -65,12 +65,8 @@
     ]
   },
 
-  "application": {
-    "protocol": "TLS",
-    "server_name": "www.google.com",
-    "alpn": "h2",
-    "http": null,
-    "dns": null
+  "services": {
+    "protocol": "https"
   },
 
   "payload": {

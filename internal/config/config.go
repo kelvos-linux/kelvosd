@@ -84,6 +84,27 @@ func (c Config) LogPath() string {
 	return DefaultLogFile
 }
 
+func (c Config) ServiceFor(protocol uint8, sourcePort, destinationPort uint16) string {
+	for _, port := range c.Ports {
+		matchesPort := false
+		for _, number := range port.Numbers {
+			if number == sourcePort || number == destinationPort {
+				matchesPort = true
+				break
+			}
+		}
+		if !matchesPort {
+			continue
+		}
+		for _, protocolName := range port.Protocols {
+			if c.Protocols[protocolName] == protocol {
+				return port.Service
+			}
+		}
+	}
+	return "Unknown"
+}
+
 func (m TrafficMonitor) InterfaceName() string {
 	if m.EthernetInterface != "" {
 		return m.EthernetInterface

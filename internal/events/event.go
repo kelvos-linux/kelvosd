@@ -56,8 +56,11 @@ func Decode(data []byte) (TrafficEvent, error) {
 	}, nil
 }
 
-func (e TrafficEvent) Record(interfaceName string) map[string]any {
+func (e TrafficEvent) Record(interfaceName, serviceName string) map[string]any {
 	protocol := e.Protocol()
+	if serviceName == "" {
+		serviceName = "Unknown"
+	}
 	return map[string]any{
 		"timestamp": time.Unix(0, int64(e.TimestampNS)).UTC().Format("2006-01-02T15:04:05.000000000Z"),
 		"interface": interfaceName,
@@ -83,10 +86,10 @@ func (e TrafficEvent) Record(interfaceName string) map[string]any {
 			},
 			"window_size": e.TCPWindow,
 		},
-		"application": map[string]any{"protocol": "Unknown", "server_name": nil, "alpn": nil, "http": nil, "dns": nil},
-		"payload":     map[string]any{"length": e.PayloadLen, "encoding": "none", "data": ""},
-		"flow":        map[string]any{"flow_id": "unset", "stream_id": 0, "session_id": "unset"},
-		"metadata":    map[string]any{"capture_method": "XDP", "kernel_timestamp": true},
+		"services": map[string]any{"protocol": serviceName},
+		"payload":  map[string]any{"length": e.PayloadLen, "encoding": "none", "data": ""},
+		"flow":     map[string]any{"flow_id": "unset", "stream_id": 0, "session_id": "unset"},
+		"metadata": map[string]any{"capture_method": "XDP", "kernel_timestamp": true},
 	}
 }
 

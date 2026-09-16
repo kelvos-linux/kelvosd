@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"path/filepath"
 	"runtime"
 
@@ -66,21 +65,6 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 	defer log.Close()
 	var dashboard *trafficTop.Dashboard
 
-	if r.Top {
-		dashboard = trafficTop.New(
-			r.Stdout,
-			ifaceName,
-			cfg.LogPath(),
-			cfg,
-		)
-
-		go func() {
-			if err := dashboard.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
-			}
-		}()
-	}
-
 	spec, err := ebpf.LoadCollectionSpec(objectPath)
 	if err != nil {
 		return fmt.Errorf("load eBPF object %q: %w", objectPath, err)
@@ -137,7 +121,7 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 
 		go func() {
 			if err := dashboard.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+				fmt.Fprintf(r.Stderr, "TUI error: %v\n", err)
 			}
 		}()
 	}
@@ -166,7 +150,8 @@ func (r Runner) Run(ctx context.Context, cfg config.Config, objectPath string) e
 		if dashboard != nil {
 			dashboard.Add(event)
 		}
-		if err := log.Write(event.Record(ifaceName)); err != nil {
+		serviceName := cfg.ServiceFor(event.Transport, event.SourcePort, event.DestPort)
+		if err := log.Write(event.Record(ifaceName, serviceName)); err != nil {
 			return err
 		}
 	}

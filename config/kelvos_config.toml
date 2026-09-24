@@ -28,3 +28,30 @@ service     = "https"
 numbers     = [443]
 protocols   = ["tcp"]
 description = "HTTP over TLS"
+
+# RULES DEFINITIONS
+
+[firewall]
+default_ingress = "allow"
+default_egress = "allow"
+
+[[rules]]
+id = 100
+action = "allow"
+direction = "ingress"
+protocols = ["tcp"]
+destination_ports = [22, 2222]
+
+[[rules]]
+id = 200
+action = "allow"
+direction = "egress"
+protocols = ["tcp", "udp"]
+destination_ports = [53]
+
+[[rules]]
+id = 300
+action = "allow"
+direction = "ingress"
+protocols = ["tcp"]
+destination_ports = [23]

@@ -57,6 +57,26 @@ Only packets matching a configured protocol and source or destination port are
 sent from XDP to userspace. Add more `[[ports]]` entries without recompiling
 the BPF object.
 
+Firewall rules can control ingress packet handling directly in XDP:
+
+```toml
+[firewall]
+default_ingress = "drop"
+default_egress = "allow"
+
+[[rules]]
+id = 100
+action = "allow"
+direction = "ingress"
+protocols = ["tcp"]
+destination_ports = [22]
+```
+
+Ingress rules with `action = "drop"` return `XDP_DROP`; allowed packets are
+sent to userspace as traffic events. Egress rules are validated and retained
+in the configuration, but require a separate egress hook and are not enforced
+by the current XDP program.
+
  3. Build and validate the Go CLI
 
  From the repository root:

@@ -14,6 +14,8 @@ type Config struct {
 	TrafficMonitor TrafficMonitor   `toml:"traffic_monitor"`
 	Protocols      map[string]uint8 `toml:"protocols"`
 	Ports          []Port           `toml:"ports"`
+	Firewall       Firewall         `toml:"firewall"`
+	Rules          []Rule           `toml:"rules"`
 }
 
 type Port struct {
@@ -29,6 +31,19 @@ type TrafficMonitor struct {
 	Interface         string `toml:"interface"`
 	TrafficLogFile    string `toml:"traffic_log_file"`
 	LogFile           string `toml:"log_file"`
+}
+
+type Firewall struct {
+	DefaultIngress string `toml:"default_ingress"`
+	DefaultEgress  string `toml:"default_egress"`
+}
+
+type Rule struct {
+	ID               uint32   `toml:"id"`
+	Action           string   `toml:"action"`
+	Direction        string   `toml:"direction"`
+	Protocols        []string `toml:"protocols"`
+	DestinationPorts []uint16 `toml:"destination_ports"`
 }
 
 func Load(path string) (Config, error) {
@@ -70,6 +85,49 @@ func (c Config) Validate() error {
 				return fmt.Errorf("ports[%d] references undefined protocol %q", index, protocol)
 			}
 		}
+	}
+	if err := validateDefaultAction("firewall.default_ingress", c.Firewall.DefaultIngress); err != nil {
+		return err
+	}
+	if err := validateDefaultAction("firewall.default_egress", c.Firewall.DefaultEgress); err != nil {
+		return err
+	}
+	seenRuleIDs := make(map[uint32]struct{}, len(c.Rules))
+	for index, rule := range c.Rules {
+		if rule.ID == 0 {
+			return fmt.Errorf("rules[%d].id must be greater than zero", index)
+		}
+		if _, seen := seenRuleIDs[rule.ID]; seen {
+			return fmt.Errorf("rules[%d].id %d is duplicated", index, rule.ID)
+		}
+		seenRuleIDs[rule.ID] = struct{}{}
+		if err := validateDefaultAction(fmt.Sprintf("rules[%d].action", index), rule.Action); err != nil {
+			return err
+		}
+		if rule.Direction != "ingress" && rule.Direction != "egress" {
+			return fmt.Errorf("rules[%d].direction must be ingress or egress", index)
+		}
+		if len(rule.Protocols) == 0 {
+			return fmt.Errorf("rules[%d].protocols must not be empty", index)
+		}
+		for _, protocol := range rule.Protocols {
+			if _, ok := c.Protocols[protocol]; !ok {
+				return fmt.Errorf("rules[%d] references undefined protocol %q", index, protocol)
+			}
+		}
+		if len(rule.DestinationPorts) == 0 {
+			return fmt.Errorf("rules[%d].destination_ports must not be empty", index)
+		}
+	}
+	return nil
+}
+
+func validateDefaultAction(field, action string) error {
+	if action == "" {
+		return nil
+	}
+	if action != "allow" && action != "drop" {
+		return fmt.Errorf("%s must be allow or drop", field)
 	}
 	return nil
 }

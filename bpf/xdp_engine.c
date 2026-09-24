@@ -8,11 +8,16 @@
 #include <linux/tcp.h>
 #include <linux/udp.h>
 
-static __always_inline int policy_allows(__u8 protocol, __u16 port)
+static __always_inline __u8 policy_action(__u8 protocol, __u16 port)
 {
     __u32 key = ((__u32)protocol << 16) | port;
     __u8 *configured = bpf_map_lookup_elem(&traffic_policy, &key);
-    return configured != 0;
+    if (configured)
+        return *configured;
+
+    __u32 default_key = 0;
+    __u8 *default_action = bpf_map_lookup_elem(&traffic_default_policy, &default_key);
+    return default_action ? *default_action : 1;
 }
 
 int xdp_engine_run(struct xdp_md *ctx)
@@ -125,8 +130,10 @@ int xdp_engine_run(struct xdp_md *ctx)
         return XDP_PASS;
     }
 
-    if (!policy_allows(ev.transport_proto, ev.sport) &&
-        !policy_allows(ev.transport_proto, ev.dport))
+    __u8 action = policy_action(ev.transport_proto, ev.dport);
+    if (action == 2)
+        return XDP_DROP;
+    if (action != 1)
         return XDP_PASS;
 
     bpf_perf_event_output(ctx, &traffic_events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));

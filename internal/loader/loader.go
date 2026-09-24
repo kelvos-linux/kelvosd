@@ -30,14 +30,31 @@ func loadTrafficPolicy(collection *ebpf.Collection, cfg config.Config) error {
 	if !ok {
 		return errors.New("eBPF map traffic_policy not found")
 	}
-	for _, port := range cfg.Ports {
-		for _, protocolName := range port.Protocols {
+	defaultPolicy, ok := collection.Maps["traffic_default_policy"]
+	if !ok {
+		return errors.New("eBPF map traffic_default_policy not found")
+	}
+	defaultAction := uint8(1)
+	if cfg.Firewall.DefaultIngress == "drop" {
+		defaultAction = 2
+	}
+	if err := defaultPolicy.Put(uint32(0), defaultAction); err != nil {
+		return fmt.Errorf("configure default ingress policy: %w", err)
+	}
+	for _, rule := range cfg.Rules {
+		if rule.Direction != "ingress" {
+			continue
+		}
+		action := uint8(1)
+		if rule.Action == "drop" {
+			action = 2
+		}
+		for _, protocolName := range rule.Protocols {
 			protocol := cfg.Protocols[protocolName]
-			for _, number := range port.Numbers {
+			for _, number := range rule.DestinationPorts {
 				key := uint32(protocol)<<16 | uint32(number)
-				value := uint8(1)
-				if err := policy.Put(key, value); err != nil {
-					return fmt.Errorf("configure %s port %d: %w", protocolName, number, err)
+				if err := policy.Put(key, action); err != nil {
+					return fmt.Errorf("configure rule %d for %s port %d: %w", rule.ID, protocolName, number, err)
 				}
 			}
 		}

@@ -43,6 +43,14 @@ struct
 
 struct
 {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(key_size, sizeof(__u32));
+    __uint(value_size, sizeof(__u8));
+    __uint(max_entries, 1);
+} traffic_default_policy SEC(".maps");
+
+struct
+{
     __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
     __uint(key_size, sizeof(int));
     __uint(value_size, sizeof(int));

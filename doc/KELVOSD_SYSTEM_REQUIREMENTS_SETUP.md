@@ -6,7 +6,7 @@ KelvoSD is a Linux userspace application with an eBPF/XDP packet-processing
 program. The project includes:
 
 - A Go userspace loader with a Cobra CLI
-- An eBPF/XDP program in `bpf/xdp_prog.c`
+- An eBPF/XDP program in `ebpf/src/xdp_prog.c`, with role-based modules under `ebpf/src/` and headers under `ebpf/include/`
 - Go eBPF libraries for loading and managing eBPF programs
 - Go JSON and TOML libraries for event output and configuration
 - Clang and LLVM for compiling the eBPF program
@@ -114,7 +114,7 @@ List available network interfaces and select the interface to monitor:
 ip link
 ```
 
-The XDP program is defined in `bpf/xdp_prog.c` and uses the `xdp` section.
+The XDP program is defined in `ebpf/src/xdp_prog.c` and uses the `xdp` section.
 Loading and attaching the program normally requires root privileges or the
 appropriate Linux capabilities.
 

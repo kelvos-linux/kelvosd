@@ -5,7 +5,7 @@
  This repository contains an XDP/eBPF program and a Go userspace loader to build, load, and test the packet processing program.
 
  Contents
-- `bpf/xdp_prog.c` — XDP program source written in C.
+- `ebpf/src/xdp_prog.c` — BPF entry point; role-based BPF modules and headers live under `ebpf/src/` and `ebpf/include/`.
 - `cmd/kelvosd/main.go` — Go userspace loader and Cobra CLI.
 - `internal/config` — TOML loading and validation.
 - `internal/events` — eBPF perf-event ABI decoding and JSON event shaping.
@@ -73,9 +73,12 @@ destination_ports = [22]
 ```
 
 Ingress rules with `action = "drop"` return `XDP_DROP`; allowed packets are
-sent to userspace as traffic events. Egress rules are validated and retained
-in the configuration, but require a separate egress hook and are not enforced
-by the current XDP program.
+sent to userspace as traffic events. The XDP program caches each parsed
+directional 5-tuple's allow or drop result in an LRU flow table, so packets in
+an active flow skip policy-map evaluation. Entries expire after five idle
+minutes when revisited and inactive entries are also removed by LRU eviction.
+Egress rules are validated and retained in the configuration, but require a
+separate egress hook and are not enforced by the current XDP program.
 
  3. Build and validate the Go CLI
 
@@ -114,7 +117,8 @@ by the current XDP program.
  The `run` command opens the perf event map, attaches `xdp_monitor` to the selected interface, and appends JSONL events to the configured log file. Use Ctrl+C to detach cleanly.
 
  Development notes
-- BPF program sources are located under `bpf/`. Keep BPF C code minimal and avoid heavy C standard library usage.
+- BPF program sources are located under `ebpf/`, split by packet parsing, policy, flow tracking, and XDP entry responsibilities. The CMake target compiles the entry point as one translation unit so BPF maps and helper references remain linked together.
+- Keep BPF C code minimal and avoid heavy C standard library usage.
 - Use `clang` with `-O2 -target bpf` or the project CMake rules to compile the program into an object file.
 - When iterating on BPF code, use `bpftool` and `ip` to inspect and manage loaded programs and maps.
 

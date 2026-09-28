@@ -70,15 +70,59 @@ action = "allow"
 direction = "ingress"
 protocols = ["tcp"]
 destination_ports = [22]
+
+[[rules]]
+id = 101
+action = "allow"
+direction = "ingress"
+state = ["established", "related"]
 ```
 
 Ingress rules with `action = "drop"` return `XDP_DROP`; allowed packets are
-sent to userspace as traffic events. The XDP program caches each parsed
-directional 5-tuple's allow or drop result in an LRU flow table, so packets in
-an active flow skip policy-map evaluation. Entries expire after five idle
-minutes when revisited and inactive entries are also removed by LRU eviction.
-Egress rules are validated and retained in the configuration, but require a
-separate egress hook and are not enforced by the current XDP program.
+sent to userspace as traffic events. `state` accepts `new`, `established`,
+`related`, and `invalid`; omitted protocol and destination-port filters match
+any protocol and port. TCP becomes `established` after the SYN, SYN-ACK, ACK
+handshake and is removed after RST or both FINs. `related` matches ICMP errors
+whose quoted TCP/UDP tuple belongs to a tracked flow; malformed or unmatched
+ICMP errors are `invalid`. Tracked flows expire after five idle minutes and
+inactive entries are also removed by LRU eviction. Egress rules are validated
+and retained in the configuration, but require a separate egress hook and are
+not enforced by the current XDP program.
+
+Rate-limit rules use a per-source-IP token bucket scoped to the rule ID. `rate`
+is a positive packet count per second and `burst` is the bucket capacity:
+
+```toml
+[[rules]]
+id = 500
+action = "rate_limit"
+direction = "ingress"
+protocol = "tcp"
+flags = ["syn"]
+rate = "100/s"
+burst = 200
+
+[[rules]]
+id = 501
+action = "rate_limit"
+direction = "ingress"
+protocol = "udp"
+rate = "500/s"
+burst = 1000
+
+[[rules]]
+id = 502
+action = "rate_limit"
+direction = "ingress"
+protocol = "icmp"
+rate = "50/s"
+burst = 100
+```
+
+Matching packets are allowed while tokens remain and dropped when the source's
+bucket is empty. IPv4 and IPv6 sources use separate buckets. Rate rules
+currently apply only to ingress; global, interface-wide, and per-flow limiters
+are not implemented.
 
  3. Build and validate the Go CLI
 

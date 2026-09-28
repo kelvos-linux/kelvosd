@@ -47,14 +47,43 @@ struct flow_key
 struct flow_state
 {
     __u64 last_seen_ns;
-    __u8 action;
-    __u8 padding[7];
+    __u8 phase;
+    __u8 fin_seen;
+    __u8 direction;
+    __u8 padding[5];
+};
+
+struct rate_limit_config
+{
+    __u64 rate_per_sec;
+    __u32 burst;
+    __u8 flags_mask;
+    __u8 padding[3];
+};
+
+struct rate_bucket_key
+{
+    __u32 rule_id;
+    __u8 ip_version;
+    __u8 padding[3];
+    __u8 source_ip[16];
+};
+
+struct rate_bucket
+{
+    struct bpf_spin_lock lock;
+    __u32 padding;
+    __u64 tokens_scaled;
+    __u64 last_refill_ns;
 };
 
 struct parsed_packet
 {
     struct traffic_event event;
     struct flow_key flow;
+    struct flow_key related_flow;
+    __u8 has_related_flow;
+    __u8 is_related_error;
 };
 
 #endif

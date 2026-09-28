@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -42,8 +44,62 @@ type Rule struct {
 	ID               uint32   `toml:"id"`
 	Action           string   `toml:"action"`
 	Direction        string   `toml:"direction"`
+	Protocol         string   `toml:"protocol"`
 	Protocols        []string `toml:"protocols"`
 	DestinationPorts []uint16 `toml:"destination_ports"`
+	State            []string `toml:"state"`
+	Flags            []string `toml:"flags"`
+	Rate             string   `toml:"rate"`
+	Burst            uint32   `toml:"burst"`
+}
+
+const PolicyStateWildcard uint8 = 255
+
+func StateCode(state string) (uint8, bool) {
+	switch strings.ToLower(state) {
+	case "new":
+		return 0, true
+	case "established":
+		return 1, true
+	case "related":
+		return 2, true
+	case "invalid":
+		return 3, true
+	default:
+		return 0, false
+	}
+}
+
+func ParseRate(rate string) (uint64, bool) {
+	parts := strings.Split(rate, "/")
+	if len(parts) != 2 || parts[1] != "s" {
+		return 0, false
+	}
+	value, err := strconv.ParseUint(parts[0], 10, 64)
+	return value, err == nil && value > 0
+}
+
+func TCPFlagMask(flags []string) (uint8, bool) {
+	var mask uint8
+	for _, flag := range flags {
+		switch strings.ToLower(flag) {
+		case "syn":
+			mask |= 1
+		case "ack":
+			mask |= 2
+		case "fin":
+			mask |= 4
+		case "rst":
+			mask |= 8
+		case "psh":
+			mask |= 16
+		case "urg":
+			mask |= 32
+		default:
+			return 0, false
+		}
+	}
+	return mask, true
 }
 
 func Load(path string) (Config, error) {
@@ -101,22 +157,54 @@ func (c Config) Validate() error {
 			return fmt.Errorf("rules[%d].id %d is duplicated", index, rule.ID)
 		}
 		seenRuleIDs[rule.ID] = struct{}{}
-		if err := validateDefaultAction(fmt.Sprintf("rules[%d].action", index), rule.Action); err != nil {
-			return err
+		if rule.Action == "rate_limit" {
+			if rule.Direction != "ingress" {
+				return fmt.Errorf("rules[%d].action rate_limit requires ingress direction", index)
+			}
+			if _, ok := ParseRate(rule.Rate); !ok {
+				return fmt.Errorf("rules[%d].rate must be a positive count per second such as 100/s", index)
+			}
+			if rule.Burst == 0 {
+				return fmt.Errorf("rules[%d].burst must be greater than zero", index)
+			}
+			if rule.Protocol == "" && len(rule.Protocols) == 0 {
+				return fmt.Errorf("rules[%d].protocol is required for rate_limit", index)
+			}
+			if rule.Protocol != "" && len(rule.Protocols) != 0 {
+				return fmt.Errorf("rules[%d] must use either protocol or protocols, not both", index)
+			}
+		} else {
+			if err := validateDefaultAction(fmt.Sprintf("rules[%d].action", index), rule.Action); err != nil {
+				return err
+			}
+			if rule.Rate != "" || rule.Burst != 0 || len(rule.Flags) != 0 {
+				return fmt.Errorf("rules[%d] rate, burst, and flags require action rate_limit", index)
+			}
 		}
 		if rule.Direction != "ingress" && rule.Direction != "egress" {
 			return fmt.Errorf("rules[%d].direction must be ingress or egress", index)
 		}
-		if len(rule.Protocols) == 0 {
-			return fmt.Errorf("rules[%d].protocols must not be empty", index)
+		protocols := rule.Protocols
+		if rule.Protocol != "" {
+			protocols = append(protocols, rule.Protocol)
 		}
-		for _, protocol := range rule.Protocols {
+		for _, protocol := range protocols {
 			if _, ok := c.Protocols[protocol]; !ok {
 				return fmt.Errorf("rules[%d] references undefined protocol %q", index, protocol)
 			}
 		}
-		if len(rule.DestinationPorts) == 0 {
-			return fmt.Errorf("rules[%d].destination_ports must not be empty", index)
+		if len(rule.Flags) != 0 {
+			if _, ok := TCPFlagMask(rule.Flags); !ok {
+				return fmt.Errorf("rules[%d] contains an unknown TCP flag", index)
+			}
+			if rule.Action != "rate_limit" || rule.Protocol != "tcp" {
+				return fmt.Errorf("rules[%d].flags requires a TCP rate_limit rule", index)
+			}
+		}
+		for _, state := range rule.State {
+			if _, ok := StateCode(state); !ok {
+				return fmt.Errorf("rules[%d] has unknown state %q", index, state)
+			}
 		}
 	}
 	return nil

@@ -14,6 +14,8 @@ traffic_log_file = "/var/log/kelvos_traffic_monitor.jsonl"
 # IPv4/IPv6 protocol numbers (IANA assigned)
 tcp         = 6    # Transmission Control
 udp         = 17   # User Datagram
+icmp        = 1    # Internet Control Message Protocol
+icmpv6      = 58   # ICMP for IPv6
 
 # PORT DEFINITIONS
 
@@ -41,6 +43,7 @@ action = "allow"
 direction = "ingress"
 protocols = ["tcp"]
 destination_ports = [22, 2222]
+state = ["established", "related"]
 
 [[rules]]
 id = 200
@@ -55,3 +58,36 @@ action = "allow"
 direction = "ingress"
 protocols = ["tcp"]
 destination_ports = [23]
+
+[[rules]]
+id = 500
+action = "rate_limit"
+direction = "ingress"
+protocol = "tcp"
+flags = ["syn"]
+rate = "100/s"
+burst = 200
+
+[[rules]]
+id = 501
+action = "rate_limit"
+direction = "ingress"
+protocol = "udp"
+rate = "500/s"
+burst = 1000
+
+[[rules]]
+id = 502
+action = "rate_limit"
+direction = "ingress"
+protocol = "icmp"
+rate = "50/s"
+burst = 100
+
+[[rules]]
+id = 503
+action = "rate_limit"
+direction = "ingress"
+protocol = "icmpv6"
+rate = "50/s"
+burst = 100

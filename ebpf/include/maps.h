@@ -6,10 +6,34 @@
 struct
 {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(key_size, sizeof(__u32));
+    __uint(key_size, sizeof(__u64));
     __uint(value_size, sizeof(__u8));
-    __uint(max_entries, 4096);
+    __uint(max_entries, 16384);
 } traffic_policy SEC(".maps");
+
+struct
+{
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(key_size, sizeof(__u64));
+    __uint(value_size, sizeof(__u32));
+    __uint(max_entries, 16384);
+} traffic_rate_policy SEC(".maps");
+
+struct
+{
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(key_size, sizeof(__u32));
+    __uint(value_size, sizeof(struct rate_limit_config));
+    __uint(max_entries, 4096);
+} rate_limit_rules SEC(".maps");
+
+struct
+{
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, struct rate_bucket_key);
+    __type(value, struct rate_bucket);
+    __uint(max_entries, 65536);
+} rate_limit_buckets SEC(".maps");
 
 struct
 {

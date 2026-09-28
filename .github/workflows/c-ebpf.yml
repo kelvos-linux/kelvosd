@@ -1,0 +1,24 @@
+name: C / eBPF
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-ebpf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake clang llvm linux-libc-dev
+
+      - name: Configure CMake
+        run: cmake -S . -B build
+
+      - name: Build eBPF program
+        run: cmake --build build --parallel

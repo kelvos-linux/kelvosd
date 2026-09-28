@@ -41,6 +41,8 @@ func loadTrafficPolicy(collection *ebpf.Collection, cfg config.Config) error {
 	if err := defaultPolicy.Put(uint32(0), defaultAction); err != nil {
 		return fmt.Errorf("configure default ingress policy: %w", err)
 	}
+	ratePolicy := collection.Maps["traffic_rate_policy"]
+	rateRules := collection.Maps["rate_limit_rules"]
 	for _, rule := range cfg.Rules {
 		if rule.Direction != "ingress" {
 			continue
@@ -48,13 +50,57 @@ func loadTrafficPolicy(collection *ebpf.Collection, cfg config.Config) error {
 		action := uint8(1)
 		if rule.Action == "drop" {
 			action = 2
+		} else if rule.Action == "rate_limit" {
+			action = 3
+			if ratePolicy == nil || rateRules == nil {
+				return errors.New("eBPF rate-limit maps not found")
+			}
+			ratePerSec, _ := config.ParseRate(rule.Rate)
+			flagsMask, _ := config.TCPFlagMask(rule.Flags)
+			rateConfig := struct {
+				RatePerSec uint64
+				Burst      uint32
+				FlagsMask  uint8
+				Padding    [3]byte
+			}{RatePerSec: ratePerSec, Burst: rule.Burst, FlagsMask: flagsMask}
+			if err := rateRules.Put(rule.ID, rateConfig); err != nil {
+				return fmt.Errorf("configure rate limit %d: %w", rule.ID, err)
+			}
 		}
-		for _, protocolName := range rule.Protocols {
-			protocol := cfg.Protocols[protocolName]
-			for _, number := range rule.DestinationPorts {
-				key := uint32(protocol)<<16 | uint32(number)
-				if err := policy.Put(key, action); err != nil {
-					return fmt.Errorf("configure rule %d for %s port %d: %w", rule.ID, protocolName, number, err)
+		protocols := rule.Protocols
+		if rule.Protocol != "" {
+			protocols = append(protocols, rule.Protocol)
+		}
+		if len(protocols) == 0 {
+			protocols = []string{""}
+		}
+		ports := rule.DestinationPorts
+		if len(ports) == 0 {
+			ports = []uint16{0}
+		}
+		states := rule.State
+		if len(states) == 0 {
+			states = []string{"*"}
+		}
+		for _, protocolName := range protocols {
+			var protocol uint8
+			if protocolName != "" {
+				protocol = cfg.Protocols[protocolName]
+			}
+			for _, number := range ports {
+				for _, stateName := range states {
+					state := config.PolicyStateWildcard
+					if stateName != "*" {
+						state, _ = config.StateCode(stateName)
+					}
+					key := uint64(protocol)<<40 | uint64(number)<<8 | uint64(state)
+					if action == 3 {
+						if err := ratePolicy.Put(key, rule.ID); err != nil {
+							return fmt.Errorf("configure rate policy %d for %s port %d state %s: %w", rule.ID, protocolName, number, stateName, err)
+						}
+					} else if err := policy.Put(key, action); err != nil {
+						return fmt.Errorf("configure rule %d for %s port %d state %s: %w", rule.ID, protocolName, number, stateName, err)
+					}
 				}
 			}
 		}

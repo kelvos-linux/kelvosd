@@ -18,6 +18,72 @@ static __always_inline void set_flow_key(struct parsed_packet *packet)
     __builtin_memcpy(packet->flow.destination_ip, packet->event.ip_daddr, sizeof(packet->flow.destination_ip));
 }
 
+static __always_inline int extract_embedded_flow(void *network, void *data_end,
+                                                 struct flow_key *flow)
+{
+    __u8 *network_byte = network;
+    if ((void *)(network_byte + 1) > data_end)
+        return 0;
+    __u8 version = *network_byte >> 4;
+    if (version == 4)
+    {
+        struct iphdr *ip = network;
+        if ((void *)(ip + 1) > data_end || ip->ihl < 5 ||
+            (void *)ip + ip->ihl * 4 > data_end ||
+            (ip->protocol != IPPROTO_TCP && ip->protocol != IPPROTO_UDP))
+            return 0;
+        void *transport = (void *)ip + ip->ihl * 4;
+        if (transport + 4 > data_end)
+            return 0;
+        __u16 *ports = transport;
+        flow->ip_version = 4;
+        flow->protocol = ip->protocol;
+        flow->source_port = bpf_ntohs(ports[0]);
+        flow->destination_port = bpf_ntohs(ports[1]);
+        __builtin_memcpy(flow->source_ip, &ip->saddr, sizeof(ip->saddr));
+        __builtin_memcpy(flow->destination_ip, &ip->daddr, sizeof(ip->daddr));
+        return 1;
+    }
+    if (version == 6)
+    {
+        struct ipv6hdr *ip6 = network;
+        if ((void *)(ip6 + 1) > data_end ||
+            (ip6->nexthdr != IPPROTO_TCP && ip6->nexthdr != IPPROTO_UDP))
+            return 0;
+        void *transport = (void *)(ip6 + 1);
+        if (transport + 4 > data_end)
+            return 0;
+        __u16 *ports = transport;
+        flow->ip_version = 6;
+        flow->protocol = ip6->nexthdr;
+        flow->source_port = bpf_ntohs(ports[0]);
+        flow->destination_port = bpf_ntohs(ports[1]);
+        __builtin_memcpy(flow->source_ip, &ip6->saddr, sizeof(ip6->saddr));
+        __builtin_memcpy(flow->destination_ip, &ip6->daddr, sizeof(ip6->daddr));
+        return 1;
+    }
+    return 0;
+}
+
+static __always_inline void parse_related_icmp(struct parsed_packet *packet,
+                                               void *icmp, void *data_end,
+                                               __u8 protocol)
+{
+    if (icmp + 8 > data_end)
+        return;
+    __u8 type = *(__u8 *)icmp;
+    int is_error = protocol == IPPROTO_ICMP
+                              ? (type == 3 || type == 4 || type == 5 ||
+                                  type == 11 || type == 12)
+                       : (type >= 1 && type <= 4);
+    if (is_error)
+    {
+        packet->is_related_error = 1;
+        packet->has_related_flow = extract_embedded_flow(icmp + 8, data_end,
+                                                        &packet->related_flow);
+    }
+}
+
 static __always_inline int parse_packet(struct xdp_md *ctx, struct parsed_packet *packet)
 {
     void *data_end = (void *)(long)ctx->data_end;
@@ -60,6 +126,8 @@ static __always_inline int parse_packet(struct xdp_md *ctx, struct parsed_packet
         if (l4_start > data_end)
             return -1;
 
+        if (ip->protocol == IPPROTO_ICMP)
+            parse_related_icmp(packet, l4_start, data_end, ip->protocol);
         if (ip->protocol == IPPROTO_TCP)
         {
             struct tcphdr *tcp = l4_start;
@@ -103,6 +171,8 @@ static __always_inline int parse_packet(struct xdp_md *ctx, struct parsed_packet
         void *l4_start = (void *)(ip6 + 1);
         if (l4_start > data_end)
             return -1;
+        if (ip6->nexthdr == IPPROTO_ICMPV6)
+            parse_related_icmp(packet, l4_start, data_end, ip6->nexthdr);
         if (ip6->nexthdr == IPPROTO_TCP)
         {
             struct tcphdr *tcp = l4_start;

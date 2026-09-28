@@ -13,7 +13,7 @@ int xdp_engine_run(struct xdp_md *ctx)
         return XDP_PASS;
 
     struct traffic_event *ev = &packet.event;
-    __u8 action = flow_decide(&packet.flow, ev->transport_proto, ev->dport, ev->timestamp_ns);
+    __u8 action = flow_decide(&packet, ev->timestamp_ns);
     if (action == 2)
         return XDP_DROP;
     if (action != 1)

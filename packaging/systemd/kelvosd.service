@@ -1,0 +1,25 @@
+[Unit]
+Description=Kelvosd XDP/eBPF Ingress Firewall
+Documentation=https://github.com/YOUR_USERNAME/kelvosd
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/kelvosd --config /etc/kelvosd/kelvosd.toml
+
+Restart=on-failure
+RestartSec=3
+
+User=root
+
+LimitMEMLOCK=infinity
+
+AmbientCapabilities=CAP_NET_ADMIN CAP_BPF CAP_PERFMON
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_BPF CAP_PERFMON
+
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
